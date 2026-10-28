@@ -1,0 +1,626 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Expiry Sheet Maker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column register. Intake card on top, filters, counts, then the table and the export bar. */
+:root {
+  --bg: #eceff2;
+  --surface: #ffffff;
+  --ink: #15202b;
+  --muted: #5a6876;
+  --line: #d3dae1;
+  --plate: #f5c518;
+  --plate-ink: #16130a;
+  --focus: #1d5fd1;
+  --ok-bg: #dcf2e3;
+  --ok-fg: #14602f;
+  --warn-bg: #fdefc4;
+  --warn-fg: #7a5200;
+  --bad-bg: #fbdada;
+  --bad-fg: #9a1c1c;
+  --neutral-bg: #e3e8ec;
+  --neutral-fg: #46515c;
+  --row-hover: #f4f6f8;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151b;
+    --surface: #17202a;
+    --ink: #e7ecf1;
+    --muted: #9aa8b6;
+    --line: #2a3744;
+    --focus: #6aa2ff;
+    --ok-bg: #123524;
+    --ok-fg: #8fe0ac;
+    --warn-bg: #3d3110;
+    --warn-fg: #f3cf6a;
+    --bad-bg: #40191b;
+    --bad-fg: #ffaaa8;
+    --neutral-bg: #222d38;
+    --neutral-fg: #b3bfca;
+    --row-hover: #1c2733;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151b;
+  --surface: #17202a;
+  --ink: #e7ecf1;
+  --muted: #9aa8b6;
+  --line: #2a3744;
+  --focus: #6aa2ff;
+  --ok-bg: #123524;
+  --ok-fg: #8fe0ac;
+  --warn-bg: #3d3110;
+  --warn-fg: #f3cf6a;
+  --bad-bg: #40191b;
+  --bad-fg: #ffaaa8;
+  --neutral-bg: #222d38;
+  --neutral-fg: #b3bfca;
+  --row-hover: #1c2733;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2rem, 5vw, 2.7rem);
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+  margin: 0 0 6px;
+  text-wrap: balance;
+}
+.lede { margin: 0; max-width: 62ch; color: var(--muted); }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, th button:focus-visible, .link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+}
+.intake { display: flex; flex-direction: column; gap: 16px; }
+.intake.dragging { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 30%, transparent); }
+.btns { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 9px 15px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.primary { background: var(--plate); color: var(--plate-ink); border-color: var(--plate-ink); font-weight: 600; }
+.btn.primary:hover:not(:disabled) { filter: brightness(0.96); border-color: var(--plate-ink); }
+.btn.ghost { background: transparent; }
+.hint { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+.reads {
+  border-top: 1px dashed var(--line);
+  padding-top: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.reads-label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.fname { font-family: var(--font-mono); font-size: 14px; overflow-wrap: anywhere; }
+.fname .dt { border-bottom: 2px solid var(--ink); }
+.fname .ex { color: var(--muted); }
+.reads-out { margin: 0; color: var(--muted); font-size: 13.5px; }
+.reads-out b { color: var(--ink); font-weight: 600; }
+
+.paste { display: flex; flex-direction: column; gap: 8px; border-top: 1px dashed var(--line); padding-top: 14px; }
+.paste label { font-weight: 500; }
+textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.notice {
+  display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
+  background: var(--warn-bg); color: var(--warn-fg);
+  border-radius: 8px; padding: 9px 14px; font-size: 14px;
+}
+.link { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font-weight: 600; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: flex-end; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field > label, .field > .lab { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.field input[type="search"], .field select, .field input[type="number"] {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0;
+}
+.field input[type="search"] { width: min(280px, 100%); }
+.field input[type="number"] { width: 84px; }
+.check { display: flex; gap: 8px; align-items: center; padding-bottom: 8px; cursor: pointer; }
+.check input { width: 17px; height: 17px; accent-color: var(--focus); }
+
+.stats { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0; padding: 0; list-style: none; }
+.stats li { display: flex; align-items: baseline; gap: 7px; }
+.stats .n { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.stats .l { color: var(--muted); font-size: 13.5px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; align-self: center; }
+.dot.bad { background: var(--bad-fg); }
+.dot.warn { background: var(--warn-fg); }
+.dot.ok { background: var(--ok-fg); }
+.dot.neutral { background: var(--neutral-fg); }
+
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; min-width: 820px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; white-space: nowrap; background: var(--surface); }
+th button { all: unset; cursor: pointer; display: inline-flex; gap: 5px; align-items: center; }
+th button:hover { color: var(--ink); }
+th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--ink); }
+.arrow { font-size: 10px; }
+tbody tr:hover { background: var(--row-hover); }
+tbody tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; }
+td.num { font-variant-numeric: tabular-nums; }
+td.fn { font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; max-width: 340px; }
+td.fo { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; max-width: 200px; }
+.empty { padding: 34px 18px; text-align: center; color: var(--muted); }
+
+.plate {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.1rem;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  background: var(--plate);
+  color: var(--plate-ink);
+  padding: 1px 9px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1.5px var(--plate-ink);
+  white-space: nowrap;
+}
+.plate.guess { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--muted); border-radius: 4px; border: 0; font-weight: 500; }
+.pill { display: inline-block; font-size: 12.5px; font-weight: 600; padding: 2px 10px; border-radius: 999px; white-space: nowrap; }
+.pill.Expired { background: var(--bad-bg); color: var(--bad-fg); }
+.pill.Due { background: var(--warn-bg); color: var(--warn-fg); }
+.pill.Valid { background: var(--ok-bg); color: var(--ok-fg); }
+.pill.None, .pill.Check { background: var(--neutral-bg); color: var(--neutral-fg); }
+.muted { color: var(--muted); }
+
+.exportbar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.msg { color: var(--muted); font-size: 13.5px; min-height: 1.4em; flex: 1 1 240px; }
+.foot { color: var(--muted); font-size: 13px; margin: 0; max-width: 76ch; }
+
+@media (max-width: 520px) {
+  body { padding-block: 20px 40px; }
+  .card { padding: 14px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .btn, .intake { transition: border-color 0.15s, box-shadow 0.15s, filter 0.15s; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Expiry Sheet Maker</h1>
+    <p class="lede">Add your files or a whole folder. Each file name is read for its unique number and expiry date, and the result becomes an Excel sheet. Files are not uploaded. Only the names are read.</p>
+  </header>
+
+  <section class="card intake" id="drop" aria-label="Add files">
+    <div>
+      <div class="btns">
+        <button type="button" class="btn primary" id="pickFiles">Choose files</button>
+        <button type="button" class="btn" id="pickFolder">Choose a folder</button>
+        <button type="button" class="btn ghost" id="togglePaste" aria-expanded="false" aria-controls="pasteBox">Paste file names</button>
+      </div>
+      <p class="hint" style="margin-top:10px">You can also drop files or a folder onto this card.</p>
+    </div>
+
+    <div class="reads">
+      <span class="reads-label">How a name is read</span>
+      <div class="fname"><span class="plate">JK-01-AN 9522</span> <span class="dt">- 20 Aug 2027</span> <span class="ex">(2)</span>.pdf</div>
+      <p class="reads-out">Unique number <b>JK 01 AN 9522</b>, expiry <b>20 Aug 2027</b>. The <b>(2)</b> is kept as a note. A name with only the number is listed with no date.</p>
+    </div>
+
+    <div class="paste" id="pasteBox" hidden>
+      <label for="pasteArea">One file name per line</label>
+      <textarea id="pasteArea" spellcheck="false" placeholder="JK 01 AN 9522  - 20 Aug 2027 (2).pdf"></textarea>
+      <div class="btns"><button type="button" class="btn" id="addPaste">Read these names</button></div>
+    </div>
+
+    <input type="file" id="fileInput" multiple hidden>
+    <input type="file" id="folderInput" webkitdirectory hidden>
+  </section>
+
+  <div class="notice" id="exampleBar">
+    <span>These are example names. Add your own files to replace them.</span>
+    <button type="button" class="link" id="clearAll">Clear the examples</button>
+  </div>
+
+  <section class="controls" aria-label="Filters">
+    <div class="field">
+      <label for="q">Search</label>
+      <input type="search" id="q" placeholder="Number, file name or folder">
+    </div>
+    <div class="field">
+      <label for="statusSel">Status</label>
+      <select id="statusSel">
+        <option value="all">All</option>
+        <option value="Expired">Expired</option>
+        <option value="Due soon">Due soon</option>
+        <option value="Valid">Valid</option>
+        <option value="No date">No date</option>
+        <option value="Check name">Check name</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="warn">Due soon means within (days)</label>
+      <input type="number" id="warn" min="1" max="365" value="30">
+    </div>
+    <label class="check" for="merge"><input type="checkbox" id="merge"> Merge duplicate files</label>
+  </section>
+
+  <ul class="stats" id="stats" aria-label="Summary"></ul>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr id="headRow"></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="emptyMsg" hidden></div>
+  </div>
+
+  <div class="exportbar">
+    <button type="button" class="btn primary" id="dl">Download Excel sheet</button>
+    <button type="button" class="btn" id="copy">Copy rows</button>
+    <span class="msg" id="msg" role="status" aria-live="polite"></span>
+  </div>
+  <p class="foot">The Excel sheet holds every row, not only the filtered ones. Days left and Status are formulas, so they stay current each day you open the sheet. Dates written as 05/08/2027 are read as day first, 5 August 2027.</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+/*PARSER_START*/
+const MON = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?![a-z])';
+const MONTH_IDX = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+const NUM_RE = /(?<![A-Za-z0-9])([A-Za-z]{2})[\s\-_.]*(\d{1,2})[\s\-_.]*([A-Za-z]{1,3})[\s\-_.]*(\d{1,4})(?![A-Za-z0-9])/;
+const DATE_RES = [
+  { re: /(?<!\d)(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})(?!\d)/, pick: m => [+m[1], +m[2] - 1, +m[3]] },
+  { re: new RegExp('(?<!\\d)(\\d{1,2})(?:st|nd|rd|th)?[\\s\\-_.\\/]*' + MON + '[\\s\\-_.,\\/]*(\\d{4}|\\d{2})(?!\\d)', 'i'),
+    pick: m => [fixYear(m[3]), MONTH_IDX[m[2].slice(0, 3).toLowerCase()], +m[1]] },
+  { re: new RegExp('(?<![a-z])' + MON + '[\\s\\-_.]*(\\d{1,2})(?:st|nd|rd|th)?[\\s,\\-_.]+(\\d{4})(?!\\d)', 'i'),
+    pick: m => [+m[3], MONTH_IDX[m[1].slice(0, 3).toLowerCase()], +m[2]] },
+  { re: /(?<!\d)(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4}|\d{2})(?!\d)/, pick: m => [fixYear(m[3]), +m[2] - 1, +m[1]] }
+];
+function fixYear(s) { return s.length === 2 ? 2000 + +s : +s; }
+function validUTC(y, m, d) {
+  if (m == null || m < 0 || m > 11 || d < 1 || d > 31) return null;
+  const t = Date.UTC(y, m, d), dt = new Date(t);
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m && dt.getUTCDate() === d ? t : null;
+}
+function stripExt(name) { return name.replace(/\.(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{1,5}$/, ''); }
+function tidy(s) { return s.replace(/[\s_\-.,]+/g, ' ').trim(); }
+
+function parseName(fileName) {
+  let base = stripExt(fileName.trim());
+  let number = '', guessed = false;
+  const nm = base.match(NUM_RE);
+  if (nm) {
+    number = (nm[1] + ' ' + nm[2].padStart(2, '0') + ' ' + nm[3] + ' ' + nm[4]).toUpperCase();
+    base = base.slice(0, nm.index) + ' ' + base.slice(nm.index + nm[0].length);
+  }
+  let dateMs = null;
+  for (const d of DATE_RES) {
+    const m = base.match(d.re);
+    if (!m) continue;
+    const t = validUTC(...d.pick(m));
+    if (t !== null) {
+      dateMs = t;
+      base = base.slice(0, m.index) + ' ' + base.slice(m.index + m[0].length);
+      break;
+    }
+  }
+  let extra = tidy(base);
+  if (!nm) { number = extra; extra = ''; guessed = true; }
+  return { number, guessed, dateMs, extra };
+}
+function statusFor(row, todayMs, warnDays) {
+  if (row.guessed) return 'Check name';
+  if (row.dateMs === null) return 'No date';
+  const days = Math.round((row.dateMs - todayMs) / 86400000);
+  if (days < 0) return 'Expired';
+  return days <= warnDays ? 'Due soon' : 'Valid';
+}
+/*PARSER_END*/
+
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function todayUTC() { const n = new Date(); return Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()); }
+function fmtDate(ms) { const d = new Date(ms); return d.getUTCDate() + ' ' + MONTH_NAMES[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); }
+function isoDate(ms) { return new Date(ms).toISOString().slice(0, 10); }
+
+const EXAMPLES = [
+  'JK 01 AN 9522  - 20 Aug 2027 (2).pdf',
+  'JK-01-AN 9522  - 20 Aug 2027.pdf',
+  'JK 01 AN 9522.pdf',
+  'JK 02 CD 1180 - 14 Oct 2026.pdf',
+  'JK-02-CD 1180 - 14 Oct 2026 (2).pdf',
+  'JK 01 BA 4417 - 12 Nov 2026.pdf',
+  'JK 03 EF 0731 - 03 Mar 2028.pdf',
+  'JK 01 AN 5603 - 30/06/2026.pdf',
+  'Site office lease.pdf'
+].map(n => ({ name: n, path: 'Example' }));
+
+const state = { sources: EXAMPLES.slice(), example: true, q: '', status: 'all', warn: 30, merge: false, sort: { key: 'date', dir: 1 } };
+const COLS = [
+  { key: 'number', label: 'Unique number', sortable: true },
+  { key: 'date', label: 'Expiry date', sortable: true },
+  { key: 'days', label: 'Days left', sortable: true, num: true },
+  { key: 'status', label: 'Status', sortable: true },
+  { key: 'copies', label: 'Copies', sortable: true, num: true },
+  { key: 'name', label: 'File name', sortable: true },
+  { key: 'folder', label: 'Folder', sortable: false }
+];
+const PILL = { 'Expired': 'Expired', 'Due soon': 'Due', 'Valid': 'Valid', 'No date': 'None', 'Check name': 'Check' };
+const ROW_LIMIT = 500;
+let XL_OK = typeof XLSX !== 'undefined';
+let downloads = null;
+
+function buildRows() {
+  const today = todayUTC();
+  const all = state.sources.map(s => {
+    const p = parseName(s.name);
+    const row = { ...p, name: s.name, folder: s.path || '' };
+    row.status = statusFor(row, today, state.warn);
+    row.days = row.dateMs === null ? null : Math.round((row.dateMs - today) / 86400000);
+    return row;
+  });
+  const groups = new Map();
+  for (const r of all) {
+    const k = r.number.replace(/\s/g, '').toUpperCase() + '|' + (r.dateMs === null ? '' : r.dateMs);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  for (const g of groups.values()) for (const r of g) r.copies = g.length;
+  let rows = all;
+  if (state.merge) rows = [...groups.values()].map(g => g[0]);
+  return rows;
+}
+function cmp(a, b, key, dir) {
+  const val = r => key === 'number' ? r.number.toUpperCase() : key === 'date' ? r.dateMs : key === 'days' ? r.days
+    : key === 'status' ? r.status : key === 'copies' ? r.copies : r.name.toLowerCase();
+  const x = val(a), y = val(b);
+  const nx = x === null || x === undefined || x === '', ny = y === null || y === undefined || y === '';
+  if (nx && ny) return 0;
+  if (nx) return 1;
+  if (ny) return -1;
+  return (x < y ? -1 : x > y ? 1 : 0) * dir;
+}
+function daysText(r) {
+  if (r.days === null) return '';
+  if (r.days === 0) return 'today';
+  return r.days < 0 ? Math.abs(r.days) + ' days ago' : 'in ' + r.days + ' days';
+}
+
+function render() {
+  const rows = buildRows();
+  // header
+  $('headRow').innerHTML = COLS.map(c => {
+    const active = state.sort.key === c.key;
+    const aria = active ? (state.sort.dir === 1 ? 'ascending' : 'descending') : 'none';
+    const inner = c.sortable
+      ? '<button type="button" data-sort="' + c.key + '">' + esc(c.label) + '<span class="arrow" aria-hidden="true">' + (active ? (state.sort.dir === 1 ? '▲' : '▼') : '') + '</span></button>'
+      : esc(c.label);
+    return '<th scope="col"' + (c.num ? ' class="num"' : '') + ' aria-sort="' + aria + '">' + inner + '</th>';
+  }).join('');
+
+  // stats
+  const count = s => rows.filter(r => r.status === s).length;
+  const items = [
+    ['', rows.length, state.merge ? 'rows after merging' : 'files read', 'neutral'],
+    ['bad', count('Expired'), 'expired', 'bad'],
+    ['warn', count('Due soon'), 'due within ' + state.warn + ' days', 'warn'],
+    ['ok', count('Valid'), 'valid', 'ok'],
+    ['neutral', count('No date'), 'no date', 'neutral'],
+    ['neutral', count('Check name'), 'name to check', 'neutral']
+  ];
+  $('stats').innerHTML = items.map(i => '<li><span class="dot ' + i[3] + '"></span><span class="n">' + i[1] + '</span><span class="l">' + esc(i[2]) + '</span></li>').join('');
+
+  // filter + sort
+  const q = state.q.trim().toLowerCase();
+  let view = rows.filter(r => (state.status === 'all' || r.status === state.status) &&
+    (!q || (r.number + ' ' + r.name + ' ' + r.folder + ' ' + r.extra).toLowerCase().includes(q)));
+  view = view.slice().sort((a, b) => cmp(a, b, state.sort.key, state.sort.dir));
+  const shown = view.slice(0, ROW_LIMIT);
+
+  $('rows').innerHTML = shown.map(r => {
+    const chip = '<span class="plate' + (r.guessed ? ' guess' : '') + '">' + esc(r.number || 'No number') + '</span>';
+    const note = r.extra ? ' <span class="muted">' + esc(r.extra) + '</span>' : '';
+    return '<tr>' +
+      '<td>' + chip + note + '</td>' +
+      '<td>' + (r.dateMs === null ? '<span class="muted">No date</span>' : esc(fmtDate(r.dateMs))) + '</td>' +
+      '<td class="num">' + esc(daysText(r)) + '</td>' +
+      '<td><span class="pill ' + PILL[r.status] + '">' + esc(r.status) + '</span></td>' +
+      '<td class="num">' + (r.copies > 1 ? '×' + r.copies : '1') + '</td>' +
+      '<td class="fn">' + esc(r.name) + '</td>' +
+      '<td class="fo">' + esc(r.folder) + '</td></tr>';
+  }).join('');
+
+  const empty = $('emptyMsg');
+  if (!rows.length) { empty.hidden = false; empty.textContent = 'No files yet. Choose files or a folder above.'; }
+  else if (!view.length) { empty.hidden = false; empty.textContent = 'No rows match the search or status filter.'; }
+  else if (view.length > ROW_LIMIT) { empty.hidden = false; empty.textContent = 'Showing the first ' + ROW_LIMIT + ' of ' + view.length + ' rows. The Excel sheet has all of them.'; }
+  else empty.hidden = true;
+
+  $('exampleBar').hidden = !state.example;
+  $('dl').disabled = !rows.length;
+  $('copy').disabled = !rows.length;
+}
+
+function say(t) { $('msg').textContent = t; }
+
+function addSources(list) {
+  if (!list.length) { say('No files were found in that selection.'); return; }
+  if (state.example) { state.sources = []; state.example = false; }
+  state.sources = state.sources.concat(list);
+  say(list.length + ' file' + (list.length === 1 ? '' : 's') + ' added.');
+  render();
+}
+function fromFileList(files) {
+  return [...files].map(f => {
+    const rel = f.webkitRelativePath || '';
+    const i = rel.lastIndexOf('/');
+    return { name: f.name, path: i > 0 ? rel.slice(0, i) : '' };
+  });
+}
+async function fromDrop(dt) {
+  const entries = [...(dt.items || [])].map(i => (i.kind === 'file' && i.webkitGetAsEntry) ? i.webkitGetAsEntry() : null).filter(Boolean);
+  if (!entries.length) return fromFileList(dt.files || []);
+  const out = [];
+  async function walk(entry, prefix) {
+    if (entry.isFile) { out.push({ name: entry.name, path: prefix.replace(/\/$/, '') }); return; }
+    const reader = entry.createReader();
+    let batch;
+    do {
+      batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+      for (const e of batch) await walk(e, prefix + entry.name + '/');
+    } while (batch.length);
+  }
+  for (const e of entries) await walk(e, '');
+  return out;
+}
+
+/* Excel export */
+function excelSerial(ms) { return ms / 86400000 + 25569; }
+function buildWorkbook(rows) {
+  const today = todayUTC();
+  const heads = ['Unique number', 'Expiry date', 'Days left', 'Status', 'Copies', 'File name', 'Folder', 'Note'];
+  const ws = {};
+  heads.forEach((h, c) => { ws[XLSX.utils.encode_cell({ r: 0, c })] = { t: 's', v: h }; });
+  const w = state.warn;
+  rows.forEach((r, i) => {
+    const R = i + 1, n = R + 1; // n is the 1-based sheet row
+    const set = (c, cell) => { ws[XLSX.utils.encode_cell({ r: R, c })] = cell; };
+    set(0, { t: 's', v: r.number });
+    if (r.dateMs !== null) set(1, { t: 'n', v: excelSerial(r.dateMs), z: 'dd-mmm-yyyy' });
+    const days = r.dateMs === null ? '' : Math.round((r.dateMs - today) / 86400000);
+    set(2, days === '' ? { t: 's', v: '', f: 'IF(B' + n + '="","",B' + n + '-TODAY())' } : { t: 'n', v: days, f: 'IF(B' + n + '="","",B' + n + '-TODAY())', z: '0' });
+    const st = r.dateMs === null ? 'No date' : days < 0 ? 'Expired' : days <= w ? 'Due soon' : 'Valid';
+    set(3, { t: 's', v: st, f: 'IF(B' + n + '="","No date",IF(B' + n + '<TODAY(),"Expired",IF(B' + n + '-TODAY()<=' + w + ',"Due soon","Valid")))' });
+    set(4, { t: 'n', v: r.copies });
+    set(5, { t: 's', v: r.name });
+    set(6, { t: 's', v: r.folder });
+    const note = [r.extra, r.guessed ? 'Number not in plate format, please check' : ''].filter(Boolean).join('. ');
+    set(7, { t: 's', v: note });
+  });
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: heads.length - 1 } });
+  ws['!cols'] = [{ wch: 18 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 46 }, { wch: 28 }, { wch: 36 }];
+  ws['!autofilter'] = { ref: ws['!ref'] };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Expiry register');
+  return wb;
+}
+async function doDownload() {
+  const rows = buildRows().slice().sort((a, b) => cmp(a, b, 'date', 1));
+  if (!rows.length) return;
+  if (!XL_OK) { say('The Excel writer did not load in this view. Use Copy rows and paste into Excel.'); return; }
+  if (!downloads) { say('Saving files is not available in this view. Use Copy rows and paste into Excel.'); return; }
+  try {
+    const out = XLSX.write(buildWorkbook(rows), { bookType: 'xlsx', type: 'array' });
+    const stamp = isoDate(todayUTC());
+    await downloads.save({ filename: 'expiry-register-' + stamp + '.xlsx', data: out });
+    say('Excel sheet saved with ' + rows.length + ' rows.');
+  } catch (e) {
+    if (e && e.code === 'declined') say('Download cancelled.');
+    else say('The sheet could not be saved' + (e && e.message ? ': ' + e.message : '.') + ' Try Copy rows instead.');
+  }
+}
+async function doCopy() {
+  const rows = buildRows().slice().sort((a, b) => cmp(a, b, 'date', 1));
+  const lines = [['Unique number', 'Expiry date', 'Days left', 'Status', 'Copies', 'File name', 'Folder', 'Note'].join('\t')];
+  const today = todayUTC();
+  for (const r of rows) {
+    lines.push([r.number, r.dateMs === null ? '' : isoDate(r.dateMs), r.dateMs === null ? '' : Math.round((r.dateMs - today) / 86400000),
+      r.status, r.copies, r.name, r.folder, r.extra].join('\t'));
+  }
+  try {
+    await navigator.clipboard.writeText(lines.join('\n'));
+    say('Copied ' + rows.length + ' rows. Paste them into Excel.');
+  } catch (e) {
+    say('Copying was blocked in this view. Use Download Excel sheet instead.');
+  }
+}
+
+/* wiring */
+$('pickFiles').addEventListener('click', () => $('fileInput').click());
+$('pickFolder').addEventListener('click', () => $('folderInput').click());
+$('fileInput').addEventListener('change', e => { addSources(fromFileList(e.target.files)); e.target.value = ''; });
+$('folderInput').addEventListener('change', e => { addSources(fromFileList(e.target.files)); e.target.value = ''; });
+$('togglePaste').addEventListener('click', () => {
+  const box = $('pasteBox'); box.hidden = !box.hidden;
+  $('togglePaste').setAttribute('aria-expanded', String(!box.hidden));
+  if (!box.hidden) $('pasteArea').focus();
+});
+$('addPaste').addEventListener('click', () => {
+  const lines = $('pasteArea').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  addSources(lines.map(n => ({ name: n.split(/[\\/]/).pop(), path: '' })));
+  $('pasteArea').value = '';
+});
+$('clearAll').addEventListener('click', () => { state.sources = []; state.example = false; say(''); render(); });
+$('q').addEventListener('input', e => { state.q = e.target.value; render(); });
+$('statusSel').addEventListener('change', e => { state.status = e.target.value; render(); });
+$('warn').addEventListener('input', e => { const v = parseInt(e.target.value, 10); if (v > 0) { state.warn = v; render(); } });
+$('merge').addEventListener('change', e => { state.merge = e.target.checked; render(); });
+$('headRow').addEventListener('click', e => {
+  const b = e.target.closest('button[data-sort]'); if (!b) return;
+  const k = b.dataset.sort;
+  state.sort = state.sort.key === k ? { key: k, dir: -state.sort.dir } : { key: k, dir: 1 };
+  render();
+});
+$('dl').addEventListener('click', doDownload);
+$('copy').addEventListener('click', doCopy);
+
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('dragging'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('dragging'); }));
+drop.addEventListener('drop', async e => {
+  say('Reading dropped items...');
+  try { addSources(await fromDrop(e.dataTransfer)); } catch (err) { say('Those items could not be read. Try Choose a folder instead.'); }
+});
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
+render();
+(async () => {
+  try { downloads = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { downloads = null; }
+  if (!downloads) say('Direct download is not available in this view. Copy rows works as a fallback.');
+})();
+</script>
+
+</body></html>
